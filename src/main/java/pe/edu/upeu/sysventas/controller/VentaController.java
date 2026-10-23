@@ -16,10 +16,7 @@ import pe.edu.upeu.sysventas.dto.SessionManager;
 import pe.edu.upeu.sysventas.enums.TipoDocumento;
 import pe.edu.upeu.sysventas.enums.TipoProducto;
 import pe.edu.upeu.sysventas.exception.ModelNotFoundException;
-import pe.edu.upeu.sysventas.model.Cliente;
-import pe.edu.upeu.sysventas.model.VentCarrito;
-import pe.edu.upeu.sysventas.model.Venta;
-import pe.edu.upeu.sysventas.model.VentaDetalle;
+import pe.edu.upeu.sysventas.model.*;
 import pe.edu.upeu.sysventas.service.*;
 import pe.edu.upeu.sysventas.utils.ConsultaDNI;
 
@@ -213,11 +210,14 @@ public class VentaController {
         columns.put("P.Unitario", new ColumnInfo("punitario", 100.0)); // Columna visible "Columna 2" mapea al campo "campo2"
         columns.put("P.Total", new ColumnInfo("ptotal", 100.0)); // Columna visible "Columna 2" mapea al campo "campo2"
 
-        Consumer<VentCarrito> updateAction = (VentCarrito ventCarrito) -> { System.out.println("Actualizar: " + ventCarrito); };
-        Consumer<VentCarrito> deleteAction = (VentCarrito ventCarrito) -> {deleteReg(ventCarrito); };
-
-        tableViewHelper.addColumnsInOrderWithSize(tableView, columns,updateAction, deleteAction );
-
+        Consumer<Producto> deleteAction= producto -> {
+            stage = (Stage) miContenedor.getScene().getWindow();
+            ps.delete(producto.getIdProducto());
+            double w = stage.getWidth() / 1.5, h = stage.getHeight() / 2;
+            Toast.showToast(stage, "Se eliminó correctamente!!", 2000, w, h);
+            listar();
+        };
+        tableViewHelper.addColumnsInOrderWithSize(tableView, columns, this::editVenCarrito, this::deleteReg);
         tableView.setTableMenuButtonVisible(true);
     }
 
@@ -272,27 +272,68 @@ public class VentaController {
     }
 
 
+
     @FXML
     private void registarPCarrito(){
         System.out.println("ID:"+SessionManager.getInstance().getUserId());
         try {
-            VentCarrito ss= VentCarrito.builder()
-                    .dniruc(dniRuc.getText())
-                    .idProducto(ps.findById(Long.parseLong(codigoPro.getText())))
-                    .nombreProducto(nombreProducto.getText())
-                    .cantidad(Double.parseDouble(cantidadPro.getText()))
-                    .punitario(Double.parseDouble(punitPro.getText()))
-                    .ptotal(Double.parseDouble(preTPro.getText()))
-                    .estado(1)
-                    .idUsuario(daoU.findById(SessionManager.getInstance().getUserId()))
-                    .tipoProducto(tipoProducto)
-                    .build();
-            daoC.save(ss);
+            Long idProd = Long.parseLong(codigoPro.getText());
+            String dni = dniRuc.getText();
+            double cantidadNueva = Double.parseDouble(cantidadPro.getText());
+            double precioUnitario = Double.parseDouble(punitPro.getText());
+
+            List<VentCarrito> carritoActual = daoC.listaCarritoCliente(dni);
+            VentCarrito productoExistente = null;
+
+            for (VentCarrito item : carritoActual) {
+                if (item.getIdProducto().getIdProducto().equals(idProd)) {
+                    productoExistente = item;
+                    break;
+                }
+            }
+            if (productoExistente != null) {
+                double nuevaCantidad = productoExistente.getCantidad() + cantidadNueva;
+                double nuevoPtotal = nuevaCantidad * precioUnitario;
+
+                daoC.delete(productoExistente.getIdCarrito());
+
+                VentCarrito ss = VentCarrito.builder()
+                        .dniruc(dni)
+                        .idProducto(ps.findById(idProd))
+                        .nombreProducto(nombreProducto.getText())
+                        .cantidad(nuevaCantidad)
+                        .punitario(precioUnitario)
+                        .ptotal(nuevoPtotal)
+                        .estado(1)
+                        .idUsuario(daoU.findById(SessionManager.getInstance().getUserId()))
+                        .tipoProducto(tipoProducto)
+                        .build();
+                daoC.save(ss);
+            } else {
+                VentCarrito ss = VentCarrito.builder()
+                        .dniruc(dni)
+                        .idProducto(ps.findById(idProd))
+                        .nombreProducto(nombreProducto.getText())
+                        .cantidad(cantidadNueva)
+                        .punitario(precioUnitario)
+                        .ptotal(Double.parseDouble(preTPro.getText()))
+                        .estado(1)
+                        .idUsuario(daoU.findById(SessionManager.getInstance().getUserId()))
+                        .tipoProducto(tipoProducto)
+                        .build();
+                daoC.save(ss);
+            }
+
+            Stage stage = StageManager.getPrimaryStage();
+            double width = stage.getMaxWidth() / 2;
+            Toast.showToast(stage, "¡Producto agregado al carrito con éxito!", 2000, width, 50);
+
             listar();
         }catch (Exception e){
-            System.out.println(e.getMessage());
+            System.out.println("Error al registrar en el carrito: " + e.getMessage());
         }
     }
+
 
     @FXML
     public void registrarVenta(){
